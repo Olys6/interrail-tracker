@@ -135,7 +135,9 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
 }
 
 function isAuthorized(req: NextRequest) {
-  return req.headers.get('x-admin-password') === process.env.ADMIN_PASSWORD
+  const header = req.headers.get('x-admin-password')
+  const param = new URL(req.url).searchParams.get('token')
+  return header === process.env.ADMIN_PASSWORD || param === process.env.ADMIN_PASSWORD
 }
 
 export async function POST(req: NextRequest) {
