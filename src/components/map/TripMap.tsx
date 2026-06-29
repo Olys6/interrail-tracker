@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useEffect, useRef, useCallback } from 'react'
+import { useMemo, useEffect, useRef } from 'react'
 import Map, { NavigationControl, type MapRef } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { RouteLayer } from './RouteLayer'
