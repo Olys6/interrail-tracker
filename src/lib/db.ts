@@ -20,6 +20,17 @@ export interface CheckIn {
   lat: number
   lng: number
   place_name: string | null
+  note: string | null
+  country: string | null
+  created_at: string
+}
+
+export interface GuestbookEntry {
+  id: number
+  check_in_id: number | null
+  name: string | null
+  message: string | null
+  emoji: string | null
   created_at: string
 }
 

@@ -8,6 +8,7 @@ export function CheckInButton() {
   const router = useRouter()
   const [status, setStatus] = useState<'idle' | 'locating' | 'saving' | 'done'>('idle')
   const [placeName, setPlaceName] = useState('')
+  const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const handleCheckIn = () => {
@@ -24,11 +25,13 @@ export function CheckInButton() {
               lat: pos.coords.latitude,
               lng: pos.coords.longitude,
               place_name: placeName.trim() || null,
+              note: note.trim() || null,
             }),
           })
           if (!res.ok) throw new Error('Failed to save')
           setStatus('done')
           setPlaceName('')
+          setNote('')
           router.refresh()
           setTimeout(() => setStatus('idle'), 2000)
         } catch {
@@ -54,6 +57,13 @@ export function CheckInButton() {
         onChange={(e) => setPlaceName(e.target.value)}
         placeholder="Place name (optional, e.g. Rome Termini)"
         className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Journal note (optional, e.g. climbed the castle, best schnitzel ever)"
+        rows={2}
+        className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
       <button
         onClick={handleCheckIn}

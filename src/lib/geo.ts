@@ -8,7 +8,7 @@ export interface PhotoCluster {
 
 const CLUSTER_RADIUS_KM = 0.5
 
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371
   const toRad = (x: number) => (x * Math.PI) / 180
   const dLat = toRad(lat2 - lat1)

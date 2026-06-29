@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { X, MapPin, Camera } from 'lucide-react'
 import { clusterPhotos, type PhotoCluster } from '@/lib/geo'
 import type { CheckIn, Photo } from '@/lib/db'
+import { Guestbook } from './Guestbook'
 
 interface Props {
   open: boolean
@@ -80,6 +81,11 @@ export function Sidebar({ open, onClose, checkIns, photos, onFlyTo, onSelectClus
                         </p>
                         <p className="text-xs text-gray-400">{timeAgo(c.created_at)}</p>
                       </button>
+                      {c.note && (
+                        <p className="mt-1 whitespace-pre-line text-sm italic leading-snug text-gray-600">
+                          {c.note}
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ol>
@@ -126,6 +132,13 @@ export function Sidebar({ open, onClose, checkIns, photos, onFlyTo, onSelectClus
                   ))}
                 </div>
               )}
+            </div>
+
+            <div className="border-t border-gray-100" />
+
+            {/* Guestbook */}
+            <div className="px-4 py-4">
+              <Guestbook />
             </div>
           </div>
         </div>

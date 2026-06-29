@@ -12,6 +12,7 @@ export function PhotoUploadForm() {
   const [useGps, setUseGps] = useState(true)
   const [manualLat, setManualLat] = useState('')
   const [manualLng, setManualLng] = useState('')
+  const [exifHint, setExifHint] = useState<'photo' | 'no-photo' | null>(null)
   const [status, setStatus] = useState<'idle' | 'uploading' | 'done'>('idle')
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -85,7 +86,29 @@ export function PhotoUploadForm() {
         type="file"
         accept="image/*"
         multiple
-        onChange={(e) => setFiles(e.target.files)}
+        onChange={async (e) => {
+          const selectedFiles = e.target.files
+          setFiles(selectedFiles)
+          setExifHint(null)
+          if (selectedFiles && selectedFiles.length > 0) {
+            try {
+              const exifr = (await import('exifr')).default
+              const gps = await exifr.gps(selectedFiles[0])
+              if (gps && gps.latitude != null && gps.longitude != null) {
+                setUseGps(false)
+                setManualLat(String(gps.latitude))
+                setManualLng(String(gps.longitude))
+                setExifHint('photo')
+              } else {
+                setUseGps(true)
+                setExifHint('no-photo')
+              }
+            } catch {
+              setUseGps(true)
+              setExifHint('no-photo')
+            }
+          }
+        }}
         className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-blue-50 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-blue-700"
       />
       <input
@@ -106,6 +129,13 @@ export function PhotoUploadForm() {
         <MapPin className="h-3.5 w-3.5" />
         Use GPS location
       </label>
+
+      {exifHint === 'photo' && (
+        <p className="text-xs text-green-600">📍 Location read from photo</p>
+      )}
+      {exifHint === 'no-photo' && (
+        <p className="text-xs text-gray-400">No location in photo — using device GPS</p>
+      )}
 
       {!useGps && (
         <div className="flex gap-2">
