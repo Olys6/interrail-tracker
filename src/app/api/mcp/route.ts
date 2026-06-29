@@ -39,6 +39,19 @@ const TOOLS = [
     },
   },
   {
+    name: 'update_checkin',
+    description: "Edit an existing check-in — change its journal note and/or place name. Find the ID with list_checkins. Only the fields you pass are changed; pass an empty string to clear a note.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'integer', description: 'The check-in ID to edit' },
+        note: { type: 'string', description: 'New journal note (empty string clears it)' },
+        place_name: { type: 'string', description: 'New place name' },
+      },
+      required: ['id'],
+    },
+  },
+  {
     name: 'list_checkins',
     description: "List all trip check-ins in chronological order with IDs, place names, and timestamps.",
     inputSchema: { type: 'object', properties: {} },
@@ -58,6 +71,22 @@ const TOOLS = [
     name: 'list_photos',
     description: "List all uploaded trip photos with captions, locations, and URLs.",
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'list_guestbook',
+    description: "List guestbook entries (messages and emoji reactions left by friends & family), newest first, with IDs.",
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'delete_guestbook_entry',
+    description: "Delete a guestbook entry by its ID — use to remove spam. Find the ID with list_guestbook.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'integer', description: 'The guestbook entry ID to delete' },
+      },
+      required: ['id'],
+    },
   },
 ]
 
@@ -127,6 +156,24 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       return `✓ Check-in added: ${resolvedName}${country ? `, ${country}` : ''} (${lat.toFixed(4)}, ${lng.toFixed(4)})${note ? `\n  📝 ${note}` : ''}`
     }
 
+    case 'update_checkin': {
+      const id = args.id as number
+      const rows = (await sql`SELECT * FROM check_ins WHERE id = ${id}`) as {
+        place_name: string | null
+        note: string | null
+      }[]
+      if (rows.length === 0) return `No check-in found with ID ${id}.`
+      const existing = rows[0]
+      const note =
+        args.note !== undefined ? ((args.note as string).trim() || null) : existing.note
+      const place =
+        args.place_name !== undefined
+          ? ((args.place_name as string).trim() || null)
+          : existing.place_name
+      await sql`UPDATE check_ins SET note = ${note}, place_name = ${place} WHERE id = ${id}`
+      return `✓ Updated check-in #${id}: ${place ?? '(no place name)'}${note ? `\n  📝 ${note}` : ''}`
+    }
+
     case 'list_checkins': {
       const rows = await sql`SELECT * FROM check_ins ORDER BY created_at ASC`
       if (rows.length === 0) return 'No check-ins yet.'
@@ -150,6 +197,24 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       return (rows as { id: number; caption: string | null; lat: number; lng: number; blob_url: string; created_at: string }[])
         .map((r) => `[ID ${r.id}] ${r.caption ?? '(no caption)'} at (${r.lat}, ${r.lng}) — ${new Date(r.created_at).toLocaleString()}\n  ${r.blob_url}`)
         .join('\n\n')
+    }
+
+    case 'list_guestbook': {
+      const rows = await sql`SELECT * FROM guestbook ORDER BY created_at DESC`
+      if (rows.length === 0) return 'No guestbook entries yet.'
+      return (rows as { id: number; name: string | null; message: string | null; emoji: string | null; created_at: string }[])
+        .map((r) => {
+          const who = r.name ?? 'Anonymous'
+          const body = r.message ?? '(reaction)'
+          return `[ID ${r.id}] ${r.emoji ? r.emoji + ' ' : ''}${who}: ${body} — ${new Date(r.created_at).toLocaleString()}`
+        })
+        .join('\n')
+    }
+
+    case 'delete_guestbook_entry': {
+      const id = args.id as number
+      await sql`DELETE FROM guestbook WHERE id = ${id}`
+      return `✓ Deleted guestbook entry #${id}`
     }
 
     default:
