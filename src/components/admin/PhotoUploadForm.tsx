@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { upload } from '@vercel/blob/client'
 import { Camera, Loader2, MapPin } from 'lucide-react'
 
 export function PhotoUploadForm() {
@@ -48,19 +49,32 @@ export function PhotoUploadForm() {
       const total = files.length
 
       for (let i = 0; i < total; i++) {
-        const formData = new FormData()
-        formData.append('file', files[i])
-        formData.append('lat', String(coords.lat))
-        formData.append('lng', String(coords.lng))
-        if (caption.trim()) formData.append('caption', caption.trim())
+        const file = files[i]
+
+        // Uploaded directly to blob storage from the browser so large phone
+        // photos and motion photos (which bundle several MB of video) don't
+        // hit the ~4.5MB body limit of the /api/photos serverless function.
+        const blob = await upload(file.name, file, {
+          access: 'public',
+          handleUploadUrl: '/api/photos/upload',
+          onUploadProgress: ({ percentage }) => {
+            setProgress(Math.round(((i + percentage / 100) / total) * 100))
+          },
+        })
 
         const res = await fetch('/api/photos', {
           method: 'POST',
-          body: formData,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            blob_url: blob.url,
+            lat: coords.lat,
+            lng: coords.lng,
+            caption: caption.trim() || null,
+          }),
         })
 
         if (!res.ok) {
-          const { error: msg } = await res.json().catch(() => ({ error: 'Upload failed' }))
+          const { error: msg } = await res.json().catch(() => ({ error: `Upload failed (${res.status})` }))
           throw new Error(msg)
         }
 
