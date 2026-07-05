@@ -55,7 +55,7 @@ export default async function AdminPage() {
               <Camera className="h-4 w-4 text-emerald-500" />
               <h2 className="text-sm font-semibold text-gray-900">Upload Photos</h2>
             </div>
-            <PhotoUploadForm />
+            <PhotoUploadForm checkIns={checkIns} />
             <div className="mt-5">
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
                 Gallery ({photos.length})

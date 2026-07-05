@@ -4,26 +4,51 @@ import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { upload } from '@vercel/blob/client'
 import { Camera, Loader2, MapPin } from 'lucide-react'
+import type { CheckIn } from '@/lib/db'
 
-export function PhotoUploadForm() {
+type LocationSource = 'gps' | 'checkin' | 'manual'
+
+async function readExifCoords(file: File): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const exifr = (await import('exifr')).default
+    const gps = await exifr.gps(file)
+    if (gps && gps.latitude != null && gps.longitude != null) {
+      return { lat: gps.latitude, lng: gps.longitude }
+    }
+  } catch {
+    // Unreadable/absent EXIF is expected (phone pickers strip GPS) — fall back.
+  }
+  return null
+}
+
+export function PhotoUploadForm({ checkIns }: { checkIns: CheckIn[] }) {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const recentCheckIns = [...checkIns].reverse()
   const [files, setFiles] = useState<FileList | null>(null)
   const [caption, setCaption] = useState('')
-  const [useGps, setUseGps] = useState(true)
+  const [source, setSource] = useState<LocationSource>('gps')
+  const [checkInId, setCheckInId] = useState(recentCheckIns[0] ? String(recentCheckIns[0].id) : '')
   const [manualLat, setManualLat] = useState('')
   const [manualLng, setManualLng] = useState('')
-  const [exifHint, setExifHint] = useState<'photo' | 'no-photo' | null>(null)
+  const [exifCount, setExifCount] = useState<{ found: number; total: number } | null>(null)
   const [status, setStatus] = useState<'idle' | 'uploading' | 'done'>('idle')
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
-  const getCoords = (): Promise<{ lat: number; lng: number }> => {
-    if (!useGps) {
+  // Coordinates used for photos without embedded GPS. Device GPS is resolved
+  // lazily by the caller so users aren't prompted when every photo has EXIF.
+  const getFallbackCoords = (): Promise<{ lat: number; lng: number }> => {
+    if (source === 'manual') {
       const lat = parseFloat(manualLat)
       const lng = parseFloat(manualLng)
       if (isNaN(lat) || isNaN(lng)) return Promise.reject(new Error('Invalid coordinates'))
       return Promise.resolve({ lat, lng })
+    }
+    if (source === 'checkin') {
+      const checkIn = checkIns.find((c) => String(c.id) === checkInId)
+      if (!checkIn) return Promise.reject(new Error('Select a check-in first'))
+      return Promise.resolve({ lat: Number(checkIn.lat), lng: Number(checkIn.lng) })
     }
     return new Promise((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(
@@ -45,11 +70,17 @@ export function PhotoUploadForm() {
     setProgress(0)
 
     try {
-      const coords = await getCoords()
       const total = files.length
+      let fallbackPromise: Promise<{ lat: number; lng: number }> | null = null
 
       for (let i = 0; i < total; i++) {
         const file = files[i]
+
+        // Each photo keeps its own embedded location when present; the
+        // fallback source only covers photos whose EXIF has no GPS (mobile
+        // photo pickers strip it for privacy).
+        const coords =
+          (await readExifCoords(file)) ?? (await (fallbackPromise ??= getFallbackCoords()))
 
         // Uploaded directly to blob storage from the browser so large phone
         // photos and motion photos (which bundle several MB of video) don't
@@ -84,6 +115,7 @@ export function PhotoUploadForm() {
       setStatus('done')
       setFiles(null)
       setCaption('')
+      setExifCount(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
       router.refresh()
       setTimeout(() => setStatus('idle'), 2000)
@@ -103,24 +135,11 @@ export function PhotoUploadForm() {
         onChange={async (e) => {
           const selectedFiles = e.target.files
           setFiles(selectedFiles)
-          setExifHint(null)
+          setExifCount(null)
           if (selectedFiles && selectedFiles.length > 0) {
-            try {
-              const exifr = (await import('exifr')).default
-              const gps = await exifr.gps(selectedFiles[0])
-              if (gps && gps.latitude != null && gps.longitude != null) {
-                setUseGps(false)
-                setManualLat(String(gps.latitude))
-                setManualLng(String(gps.longitude))
-                setExifHint('photo')
-              } else {
-                setUseGps(true)
-                setExifHint('no-photo')
-              }
-            } catch {
-              setUseGps(true)
-              setExifHint('no-photo')
-            }
+            const results = await Promise.all(Array.from(selectedFiles).map(readExifCoords))
+            const found = results.filter(Boolean).length
+            setExifCount({ found, total: selectedFiles.length })
           }
         }}
         className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-blue-50 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-blue-700"
@@ -133,25 +152,54 @@ export function PhotoUploadForm() {
         className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
 
+      {exifCount && exifCount.found === exifCount.total && (
+        <p className="text-xs text-green-600">
+          📍 {exifCount.total === 1 ? 'Location read from photo' : 'All photos have embedded locations'}
+        </p>
+      )}
+      {exifCount && exifCount.found > 0 && exifCount.found < exifCount.total && (
+        <p className="text-xs text-amber-600">
+          📍 {exifCount.found} of {exifCount.total} photos have embedded locations — the rest use
+          the fallback below
+        </p>
+      )}
+      {exifCount && exifCount.found === 0 && (
+        <p className="text-xs text-gray-400">
+          No location in {exifCount.total === 1 ? 'photo' : 'photos'} — using the fallback below
+        </p>
+      )}
+
       <label className="flex items-center gap-1.5 text-sm text-gray-600">
-        <input
-          type="checkbox"
-          checked={useGps}
-          onChange={(e) => setUseGps(e.target.checked)}
-          className="rounded"
-        />
-        <MapPin className="h-3.5 w-3.5" />
-        Use GPS location
+        <MapPin className="h-3.5 w-3.5 shrink-0" />
+        <span className="shrink-0">Fallback location</span>
+        <select
+          value={source}
+          onChange={(e) => setSource(e.target.value as LocationSource)}
+          className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="gps">Device GPS</option>
+          {recentCheckIns.length > 0 && <option value="checkin">A check-in</option>}
+          <option value="manual">Manual coordinates</option>
+        </select>
       </label>
 
-      {exifHint === 'photo' && (
-        <p className="text-xs text-green-600">📍 Location read from photo</p>
-      )}
-      {exifHint === 'no-photo' && (
-        <p className="text-xs text-gray-400">No location in photo — using device GPS</p>
+      {source === 'checkin' && (
+        <select
+          value={checkInId}
+          onChange={(e) => setCheckInId(e.target.value)}
+          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {recentCheckIns.map((c) => (
+            <option key={c.id} value={String(c.id)}>
+              {c.place_name ?? `${Number(c.lat).toFixed(3)}, ${Number(c.lng).toFixed(3)}`}
+              {' — '}
+              {new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+            </option>
+          ))}
+        </select>
       )}
 
-      {!useGps && (
+      {source === 'manual' && (
         <div className="flex gap-2">
           <input
             type="number"
