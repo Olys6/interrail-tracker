@@ -21,6 +21,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'blob_url, lat, lng required' }, { status: 400 })
   }
 
+  // (0, 0) is "Null Island" — a common sentinel for a failed/missing GPS
+  // fix, never a real location on an Interrail trip. Reject it rather than
+  // silently storing a photo in the middle of the Gulf of Guinea.
+  if (lat === 0 && lng === 0) {
+    return NextResponse.json({ error: 'No valid location for this photo (got 0, 0)' }, { status: 400 })
+  }
+
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return NextResponse.json({ error: 'lat/lng out of range' }, { status: 400 })
+  }
+
   const rows = await sql`
     INSERT INTO photos (blob_url, lat, lng, caption)
     VALUES (${blobUrl}, ${lat}, ${lng}, ${caption})

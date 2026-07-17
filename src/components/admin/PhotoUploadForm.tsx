@@ -8,11 +8,16 @@ import type { CheckIn } from '@/lib/db'
 
 type LocationSource = 'gps' | 'checkin' | 'manual'
 
+// (0, 0) is "Null Island" — some phones write zeroed-out GPS tags into EXIF
+// when they didn't actually have a location fix, rather than omitting the
+// tag. Treat that as "no location" rather than trusting it.
+const isNullIsland = (lat: number, lng: number) => lat === 0 && lng === 0
+
 async function readExifCoords(file: File): Promise<{ lat: number; lng: number } | null> {
   try {
     const exifr = (await import('exifr')).default
     const gps = await exifr.gps(file)
-    if (gps && gps.latitude != null && gps.longitude != null) {
+    if (gps && gps.latitude != null && gps.longitude != null && !isNullIsland(gps.latitude, gps.longitude)) {
       return { lat: gps.latitude, lng: gps.longitude }
     }
   } catch {
