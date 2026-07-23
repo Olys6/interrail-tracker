@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og'
-import { sql } from '@/lib/db'
+import { getTripStats } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -13,20 +13,16 @@ export default async function Image() {
   let photos = 0
 
   try {
-    const [latestCheckIn, stopCount, photoCount] = await Promise.all([
-      sql`SELECT place_name FROM check_ins ORDER BY created_at DESC LIMIT 1`,
-      sql`SELECT COUNT(*)::int AS count FROM check_ins`,
-      sql`SELECT COUNT(*)::int AS count FROM photos`,
-    ])
+    const stats = await getTripStats()
 
-    if (latestCheckIn.length > 0 && latestCheckIn[0].place_name) {
-      city = latestCheckIn[0].place_name as string
-    } else if (latestCheckIn.length > 0) {
+    if (stats.latestPlaceName) {
+      city = stats.latestPlaceName
+    } else if (stats.hasCheckIns) {
       city = 'Somewhere in Europe'
     }
 
-    stops = (stopCount[0]?.count as number) ?? 0
-    photos = (photoCount[0]?.count as number) ?? 0
+    stops = stats.stops
+    photos = stats.photos
   } catch {
     // Render a sensible default if the DB query fails
     city = 'Somewhere in Europe'

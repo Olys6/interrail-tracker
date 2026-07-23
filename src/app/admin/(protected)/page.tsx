@@ -1,4 +1,4 @@
-import { sql } from '@/lib/db'
+import { getCheckIns, getPhotos } from '@/lib/db'
 import type { CheckIn, Photo } from '@/lib/db'
 import { CheckInButton } from '@/components/admin/CheckInButton'
 import { CheckInList } from '@/components/admin/CheckInList'
@@ -10,10 +10,30 @@ import { MapPin, Camera } from 'lucide-react'
 export const dynamic = 'force-dynamic'
 
 export default async function AdminPage() {
-  const [checkIns, photos] = await Promise.all([
-    sql`SELECT * FROM check_ins ORDER BY created_at ASC` as unknown as Promise<CheckIn[]>,
-    sql`SELECT * FROM photos ORDER BY created_at DESC` as unknown as Promise<Photo[]>,
-  ])
+  let checkIns: CheckIn[]
+  let photos: Photo[]
+  try {
+    ;[checkIns, photos] = await Promise.all([getCheckIns(), getPhotos()])
+  } catch {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <div className="max-w-sm rounded-2xl bg-white p-6 text-center shadow-sm">
+          <p className="text-3xl">🛠️</p>
+          <h1 className="mt-2 text-base font-bold text-gray-900">Can&apos;t reach the database</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            The trip database is temporarily unavailable (often a Neon compute-quota or
+            cold-start issue). Try refreshing in a minute.
+          </p>
+          <a
+            href="/admin"
+            className="mt-4 inline-block rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            Try again
+          </a>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

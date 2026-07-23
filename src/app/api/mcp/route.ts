@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { revalidateTag } from 'next/cache'
 import { sql } from '@/lib/db'
 import { del } from '@/lib/blob'
 
@@ -179,6 +180,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
         INSERT INTO check_ins (lat, lng, place_name, note, country)
         VALUES (${lat}, ${lng}, ${resolvedName}, ${note}, ${country})
       `
+      revalidateTag('check-ins')
       return `✓ Check-in added: ${resolvedName}${country ? `, ${country}` : ''} (${lat.toFixed(4)}, ${lng.toFixed(4)})${note ? `\n  📝 ${note}` : ''}`
     }
 
@@ -197,6 +199,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
           ? ((args.place_name as string).trim() || null)
           : existing.place_name
       await sql`UPDATE check_ins SET note = ${note}, place_name = ${place} WHERE id = ${id}`
+      revalidateTag('check-ins')
       return `✓ Updated check-in #${id}: ${place ?? '(no place name)'}${note ? `\n  📝 ${note}` : ''}`
     }
 
@@ -214,6 +217,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
     case 'delete_checkin': {
       const id = args.id as number
       await sql`DELETE FROM check_ins WHERE id = ${id}`
+      revalidateTag('check-ins')
       return `✓ Deleted check-in #${id}`
     }
 
@@ -242,6 +246,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
         return `Invalid coordinates: (${lat}, ${lng})`
       }
       await sql`UPDATE photos SET lat = ${lat}, lng = ${lng}, caption = ${caption} WHERE id = ${id}`
+      revalidateTag('photos')
       return `✓ Updated photo #${id}: (${lat.toFixed(4)}, ${lng.toFixed(4)})${caption ? `\n  ${caption}` : ''}`
     }
 
@@ -251,6 +256,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       if (rows.length === 0) return `No photo found with ID ${id}.`
       await del(rows[0].blob_url, { token: process.env.BLOB_READ_WRITE_TOKEN })
       await sql`DELETE FROM photos WHERE id = ${id}`
+      revalidateTag('photos')
       return `✓ Deleted photo #${id}`
     }
 

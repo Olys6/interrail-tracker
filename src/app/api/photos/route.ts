@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sql } from '@/lib/db'
+import { revalidateTag } from 'next/cache'
+import { sql, getPhotos } from '@/lib/db'
 import { requireAuth } from '@/lib/auth'
+import { dbErrorResponse } from '@/lib/api-error'
 
 export async function GET() {
-  const rows = await sql`SELECT * FROM photos ORDER BY created_at DESC`
-  return NextResponse.json(rows)
+  try {
+    return NextResponse.json(await getPhotos())
+  } catch {
+    return dbErrorResponse()
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -32,10 +37,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'lat/lng out of range' }, { status: 400 })
   }
 
-  const rows = await sql`
-    INSERT INTO photos (blob_url, lat, lng, caption)
-    VALUES (${blobUrl}, ${lat}, ${lng}, ${caption})
-    RETURNING *
-  `
-  return NextResponse.json(rows[0], { status: 201 })
+  try {
+    const rows = await sql`
+      INSERT INTO photos (blob_url, lat, lng, caption)
+      VALUES (${blobUrl}, ${lat}, ${lng}, ${caption})
+      RETURNING *
+    `
+    revalidateTag('photos')
+    return NextResponse.json(rows[0], { status: 201 })
+  } catch {
+    return dbErrorResponse()
+  }
 }
