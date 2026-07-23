@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sql } from '@/lib/db'
 import type { GuestbookEntry } from '@/lib/db'
+import { dbErrorResponse } from '@/lib/api-error'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const rows = (await sql`
-    SELECT * FROM guestbook ORDER BY created_at DESC
-  `) as GuestbookEntry[]
-  return NextResponse.json(rows)
+  try {
+    const rows = (await sql`
+      SELECT * FROM guestbook ORDER BY created_at DESC
+    `) as GuestbookEntry[]
+    return NextResponse.json(rows)
+  } catch {
+    return dbErrorResponse()
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -36,11 +41,15 @@ export async function POST(req: NextRequest) {
   const message = rawMessage ? rawMessage.slice(0, 500) : null
   const emoji = rawEmoji ? rawEmoji.slice(0, 16) : null
 
-  const rows = (await sql`
-    INSERT INTO guestbook (check_in_id, name, message, emoji)
-    VALUES (${checkInId}, ${name}, ${message}, ${emoji})
-    RETURNING *
-  `) as GuestbookEntry[]
+  try {
+    const rows = (await sql`
+      INSERT INTO guestbook (check_in_id, name, message, emoji)
+      VALUES (${checkInId}, ${name}, ${message}, ${emoji})
+      RETURNING *
+    `) as GuestbookEntry[]
 
-  return NextResponse.json(rows[0], { status: 201 })
+    return NextResponse.json(rows[0], { status: 201 })
+  } catch {
+    return dbErrorResponse()
+  }
 }
