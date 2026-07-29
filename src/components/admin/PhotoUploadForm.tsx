@@ -5,21 +5,22 @@ import { useRouter } from 'next/navigation'
 import { upload } from '@vercel/blob/client'
 import { Camera, Loader2, MapPin } from 'lucide-react'
 import type { CheckIn } from '@/lib/db'
+import { parseCoords } from '@/lib/geo'
 
 type LocationSource = 'gps' | 'checkin' | 'manual'
-
-// (0, 0) is "Null Island" — some phones write zeroed-out GPS tags into EXIF
-// when they didn't actually have a location fix, rather than omitting the
-// tag. Treat that as "no location" rather than trusting it.
-const isNullIsland = (lat: number, lng: number) => lat === 0 && lng === 0
 
 async function readExifCoords(file: File): Promise<{ lat: number; lng: number } | null> {
   try {
     const exifr = (await import('exifr')).default
     const gps = await exifr.gps(file)
-    if (gps && gps.latitude != null && gps.longitude != null && !isNullIsland(gps.latitude, gps.longitude)) {
-      return { lat: gps.latitude, lng: gps.longitude }
-    }
+    if (!gps) return null
+    // Android's photo picker often hands over images with partial or zeroed
+    // GPS tags, which exifr turns into NaN or (0, 0). Both must be treated as
+    // "no location" so the photo falls through to the fallback below —
+    // previously NaN passed the check here and was serialised to null, which
+    // the API then read back as a literal 0.
+    const coords = parseCoords(gps.latitude, gps.longitude)
+    if (coords.ok) return { lat: coords.lat, lng: coords.lng }
   } catch {
     // Unreadable/absent EXIF is expected (phone pickers strip GPS) — fall back.
   }
@@ -45,19 +46,39 @@ export function PhotoUploadForm({ checkIns }: { checkIns: CheckIn[] }) {
   // lazily by the caller so users aren't prompted when every photo has EXIF.
   const getFallbackCoords = (): Promise<{ lat: number; lng: number }> => {
     if (source === 'manual') {
-      const lat = parseFloat(manualLat)
-      const lng = parseFloat(manualLng)
-      if (isNaN(lat) || isNaN(lng)) return Promise.reject(new Error('Invalid coordinates'))
-      return Promise.resolve({ lat, lng })
+      const coords = parseCoords(manualLat, manualLng)
+      if (!coords.ok) {
+        return Promise.reject(
+          new Error(
+            coords.reason === 'out-of-range'
+              ? 'Coordinates out of range — latitude is -90…90, longitude is -180…180'
+              : 'Enter a valid latitude and longitude'
+          )
+        )
+      }
+      return Promise.resolve({ lat: coords.lat, lng: coords.lng })
     }
     if (source === 'checkin') {
       const checkIn = checkIns.find((c) => String(c.id) === checkInId)
       if (!checkIn) return Promise.reject(new Error('Select a check-in first'))
-      return Promise.resolve({ lat: Number(checkIn.lat), lng: Number(checkIn.lng) })
+      const coords = parseCoords(checkIn.lat, checkIn.lng)
+      if (!coords.ok) {
+        return Promise.reject(
+          new Error("That check-in has no usable coordinates — pick another one or enter them manually")
+        )
+      }
+      return Promise.resolve({ lat: coords.lat, lng: coords.lng })
     }
     return new Promise((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (pos) => {
+          const coords = parseCoords(pos.coords.latitude, pos.coords.longitude)
+          if (!coords.ok) {
+            reject(new Error('Device GPS returned no usable fix — pick a check-in or enter coordinates'))
+            return
+          }
+          resolve({ lat: coords.lat, lng: coords.lng })
+        },
         () => reject(new Error('Could not get location — check browser permissions')),
         { enableHighAccuracy: true, timeout: 10000 }
       )

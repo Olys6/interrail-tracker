@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { revalidateTag } from 'next/cache'
 import { sql } from '@/lib/db'
 import { del } from '@/lib/blob'
+import { parseCoords } from '@/lib/geo'
 
 export const dynamic = 'force-dynamic'
 
@@ -238,13 +239,16 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       }[]
       if (rows.length === 0) return `No photo found with ID ${id}.`
       const existing = rows[0]
-      const lat = args.lat !== undefined ? (args.lat as number) : existing.lat
-      const lng = args.lng !== undefined ? (args.lng as number) : existing.lng
       const caption =
         args.caption !== undefined ? ((args.caption as string).trim() || null) : existing.caption
-      if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-        return `Invalid coordinates: (${lat}, ${lng})`
+      const coords = parseCoords(
+        args.lat !== undefined ? args.lat : existing.lat,
+        args.lng !== undefined ? args.lng : existing.lng
+      )
+      if (!coords.ok) {
+        return `Invalid coordinates: (${args.lat ?? existing.lat}, ${args.lng ?? existing.lng})`
       }
+      const { lat, lng } = coords
       await sql`UPDATE photos SET lat = ${lat}, lng = ${lng}, caption = ${caption} WHERE id = ${id}`
       revalidateTag('photos')
       return `✓ Updated photo #${id}: (${lat.toFixed(4)}, ${lng.toFixed(4)})${caption ? `\n  ${caption}` : ''}`

@@ -1,5 +1,36 @@
 import type { Photo } from './db'
 
+export type CoordResult =
+  | { ok: true; lat: number; lng: number }
+  | { ok: false; reason: 'missing' | 'null-island' | 'out-of-range' }
+
+// Coerce an untrusted value into a coordinate. Deliberately stricter than
+// Number(): NaN survives a `!= null` check, JSON.stringify writes it as null,
+// and Number(null) is 0 — so a NaN coordinate (bad or partial EXIF GPS tags)
+// silently turns into a real-looking 0 by the time it reaches the DB.
+function toCoord(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+// Single gate for every coordinate that enters the app (EXIF, device GPS,
+// manual entry, API bodies, MCP args). (0, 0) is "Null Island" — the sentinel
+// a device writes when it had no fix, never a real stop on an Interrail trip.
+export function parseCoords(lat: unknown, lng: unknown): CoordResult {
+  const parsedLat = toCoord(lat)
+  const parsedLng = toCoord(lng)
+  if (parsedLat === null || parsedLng === null) return { ok: false, reason: 'missing' }
+  if (parsedLat === 0 && parsedLng === 0) return { ok: false, reason: 'null-island' }
+  if (parsedLat < -90 || parsedLat > 90 || parsedLng < -180 || parsedLng > 180) {
+    return { ok: false, reason: 'out-of-range' }
+  }
+  return { ok: true, lat: parsedLat, lng: parsedLng }
+}
+
 export interface PhotoCluster {
   lat: number
   lng: number
