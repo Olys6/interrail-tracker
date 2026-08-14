@@ -29,3 +29,10 @@ export async function del(url: string) {
   const key = url.replace(`${PUBLIC_URL}/`, '')
   await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }))
 }
+
+// Server-side direct upload (no presigning) — used by the one-off Blob→Tigris
+// migration, where the file already lives in a server process as a Buffer.
+export async function putObject(key: string, body: Buffer, contentType: string) {
+  await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: body, ContentType: contentType }))
+  return `${PUBLIC_URL}/${key}`
+}
