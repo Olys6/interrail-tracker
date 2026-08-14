@@ -21,6 +21,46 @@ async function readExifCoords(file: File): Promise<{ lat: number; lng: number } 
   return null
 }
 
+const MAX_DIMENSION = 2200
+const JPEG_QUALITY = 0.85
+const SKIP_COMPRESSION_BELOW_BYTES = 1_500_000
+
+// Downscales/re-encodes oversized phone photos before they hit Blob storage.
+// Falls back to the original file on any failure (e.g. HEIC decoding not
+// supported in this browser) so a bad photo never blocks the whole upload.
+async function compressImage(file: File): Promise<File> {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif') return file
+  if (file.size < SKIP_COMPRESSION_BELOW_BYTES) return file
+
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+    const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height))
+    const width = Math.round(bitmap.width * scale)
+    const height = Math.round(bitmap.height * scale)
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      bitmap.close()
+      return file
+    }
+    ctx.drawImage(bitmap, 0, 0, width, height)
+    bitmap.close()
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY)
+    )
+    if (!blob || blob.size >= file.size) return file
+
+    const newName = file.name.replace(/\.\w+$/, '') + '.jpg'
+    return new File([blob], newName, { type: 'image/jpeg' })
+  } catch {
+    return file
+  }
+}
+
 export function PhotoUploadForm({ checkIns }: { checkIns: CheckIn[] }) {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -82,10 +122,14 @@ export function PhotoUploadForm({ checkIns }: { checkIns: CheckIn[] }) {
         const coords =
           (await readExifCoords(file)) ?? (await (fallbackPromise ??= getFallbackCoords()))
 
+        // Resize/re-encode oversized photos before upload — EXIF is already
+        // read above, so this can't affect location extraction.
+        const uploadFile = await compressImage(file)
+
         // Uploaded directly to blob storage from the browser so large phone
         // photos and motion photos (which bundle several MB of video) don't
         // hit the ~4.5MB body limit of the /api/photos serverless function.
-        const blob = await upload(file.name, file, {
+        const blob = await upload(uploadFile.name, uploadFile, {
           access: 'public',
           handleUploadUrl: '/api/photos/upload',
           onUploadProgress: ({ percentage }) => {
