@@ -1,5 +1,8 @@
 import { NextRequest } from 'next/server'
+import { revalidateTag } from 'next/cache'
 import { sql } from '@/lib/db'
+import { del } from '@/lib/blob'
+import { parseCoords } from '@/lib/geo'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,6 +74,31 @@ const TOOLS = [
     name: 'list_photos',
     description: "List all uploaded trip photos with captions, locations, and URLs.",
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'update_photo',
+    description: "Fix a photo's location and/or caption — use this to relocate photos that ended up at the wrong coordinates (e.g. (0, 0) from bad EXIF data). Find the ID with list_photos. Only the fields you pass are changed.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'integer', description: 'The photo ID to edit' },
+        lat: { type: 'number', description: 'New latitude' },
+        lng: { type: 'number', description: 'New longitude' },
+        caption: { type: 'string', description: 'New caption (empty string clears it)' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'delete_photo',
+    description: "Delete a photo by its ID (also removes it from blob storage). Find the ID with list_photos.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'integer', description: 'The photo ID to delete' },
+      },
+      required: ['id'],
+    },
   },
   {
     name: 'list_guestbook',
@@ -153,6 +181,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
         INSERT INTO check_ins (lat, lng, place_name, note, country)
         VALUES (${lat}, ${lng}, ${resolvedName}, ${note}, ${country})
       `
+      revalidateTag('check-ins')
       return `✓ Check-in added: ${resolvedName}${country ? `, ${country}` : ''} (${lat.toFixed(4)}, ${lng.toFixed(4)})${note ? `\n  📝 ${note}` : ''}`
     }
 
@@ -171,6 +200,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
           ? ((args.place_name as string).trim() || null)
           : existing.place_name
       await sql`UPDATE check_ins SET note = ${note}, place_name = ${place} WHERE id = ${id}`
+      revalidateTag('check-ins')
       return `✓ Updated check-in #${id}: ${place ?? '(no place name)'}${note ? `\n  📝 ${note}` : ''}`
     }
 
@@ -188,6 +218,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
     case 'delete_checkin': {
       const id = args.id as number
       await sql`DELETE FROM check_ins WHERE id = ${id}`
+      revalidateTag('check-ins')
       return `✓ Deleted check-in #${id}`
     }
 
@@ -197,6 +228,40 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       return (rows as { id: number; caption: string | null; lat: number; lng: number; blob_url: string; created_at: string }[])
         .map((r) => `[ID ${r.id}] ${r.caption ?? '(no caption)'} at (${r.lat}, ${r.lng}) — ${new Date(r.created_at).toLocaleString()}\n  ${r.blob_url}`)
         .join('\n\n')
+    }
+
+    case 'update_photo': {
+      const id = args.id as number
+      const rows = (await sql`SELECT * FROM photos WHERE id = ${id}`) as {
+        lat: number
+        lng: number
+        caption: string | null
+      }[]
+      if (rows.length === 0) return `No photo found with ID ${id}.`
+      const existing = rows[0]
+      const caption =
+        args.caption !== undefined ? ((args.caption as string).trim() || null) : existing.caption
+      const coords = parseCoords(
+        args.lat !== undefined ? args.lat : existing.lat,
+        args.lng !== undefined ? args.lng : existing.lng
+      )
+      if (!coords.ok) {
+        return `Invalid coordinates: (${args.lat ?? existing.lat}, ${args.lng ?? existing.lng})`
+      }
+      const { lat, lng } = coords
+      await sql`UPDATE photos SET lat = ${lat}, lng = ${lng}, caption = ${caption} WHERE id = ${id}`
+      revalidateTag('photos')
+      return `✓ Updated photo #${id}: (${lat.toFixed(4)}, ${lng.toFixed(4)})${caption ? `\n  ${caption}` : ''}`
+    }
+
+    case 'delete_photo': {
+      const id = args.id as number
+      const rows = (await sql`SELECT blob_url FROM photos WHERE id = ${id}`) as { blob_url: string }[]
+      if (rows.length === 0) return `No photo found with ID ${id}.`
+      await del(rows[0].blob_url)
+      await sql`DELETE FROM photos WHERE id = ${id}`
+      revalidateTag('photos')
+      return `✓ Deleted photo #${id}`
     }
 
     case 'list_guestbook': {

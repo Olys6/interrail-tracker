@@ -1,5 +1,5 @@
 import dynamicImport from 'next/dynamic'
-import { sql } from '@/lib/db'
+import { getCheckIns, getPhotos } from '@/lib/db'
 import type { CheckIn, Photo } from '@/lib/db'
 import { StatsBanner } from '@/components/map/StatsBanner'
 
@@ -11,10 +11,24 @@ const TripView = dynamicImport(
 )
 
 export default async function HomePage() {
-  const [checkIns, photos] = await Promise.all([
-    sql`SELECT * FROM check_ins ORDER BY created_at ASC` as unknown as Promise<CheckIn[]>,
-    sql`SELECT * FROM photos ORDER BY created_at DESC` as unknown as Promise<Photo[]>,
-  ])
+  let checkIns: CheckIn[]
+  let photos: Photo[]
+  try {
+    ;[checkIns, photos] = await Promise.all([getCheckIns(), getPhotos()])
+  } catch {
+    return (
+      <main className="flex h-screen w-full items-center justify-center bg-gray-50 px-4">
+        <div className="max-w-sm text-center">
+          <p className="text-4xl">🚂💤</p>
+          <h1 className="mt-3 text-lg font-bold text-gray-900">Trip map is taking a nap</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            We couldn&apos;t reach the database just now — this is usually temporary. Try
+            refreshing in a few minutes.
+          </p>
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className="relative">

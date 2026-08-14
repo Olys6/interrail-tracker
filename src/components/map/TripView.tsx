@@ -27,10 +27,37 @@ export function TripView({ initialCheckIns, photos }: Props) {
     }
   }, [])
 
+  // Poll for new check-ins, but only while the tab is actually visible —
+  // background tabs polling every minute kept the Neon compute endpoint
+  // permanently awake and burned through the free-tier compute quota.
   useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null
+
+    const startPolling = () => {
+      if (interval) return
+      interval = setInterval(fetchCheckIns, 5 * 60 * 1000)
+    }
+    const stopPolling = () => {
+      if (interval) clearInterval(interval)
+      interval = null
+    }
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling()
+      } else {
+        fetchCheckIns()
+        startPolling()
+      }
+    }
+
     fetchCheckIns()
-    const interval = setInterval(fetchCheckIns, 60000)
-    return () => clearInterval(interval)
+    if (!document.hidden) startPolling()
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      stopPolling()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [fetchCheckIns])
 
   const handleFlyTo = useCallback((lat: number, lng: number) => {
