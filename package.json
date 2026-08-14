@@ -10,6 +10,8 @@
     "migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1110.0",
+    "@aws-sdk/s3-request-presigner": "^3.1110.0",
     "@neondatabase/serverless": "^1.1.0",
     "@types/geojson": "^7946.0.16",
     "@types/mapbox-gl": "^3.4.1",

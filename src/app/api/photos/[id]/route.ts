@@ -13,7 +13,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  await del(rows[0].blob_url as string, { token: process.env.BLOB_READ_WRITE_TOKEN })
+  await del(rows[0].blob_url as string)
   await sql`DELETE FROM photos WHERE id = ${id}`
   return NextResponse.json({ ok: true })
 }

@@ -2,9 +2,42 @@
 
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { upload } from '@vercel/blob/client'
 import { Camera, Loader2, MapPin } from 'lucide-react'
 import type { CheckIn } from '@/lib/db'
+
+// Fetches a presigned PUT URL, then uploads straight to storage from the
+// browser (bypassing our server) so large phone photos and motion photos
+// don't hit the request body limit of the /api/photos serverless function.
+// XMLHttpRequest is used instead of fetch so upload progress is available.
+async function uploadToStorage(file: File, onProgress: (percentage: number) => void): Promise<string> {
+  const res = await fetch('/api/photos/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: file.name, contentType: file.type }),
+  })
+  if (!res.ok) {
+    const { error } = await res.json().catch(() => ({ error: `Failed to get upload URL (${res.status})` }))
+    throw new Error(error)
+  }
+  const { uploadUrl, publicUrl } = (await res.json()) as { uploadUrl: string; publicUrl: string }
+
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', uploadUrl)
+    xhr.setRequestHeader('Content-Type', file.type)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve()
+      else reject(new Error(`Upload failed (${xhr.status})`))
+    }
+    xhr.onerror = () => reject(new Error('Upload failed'))
+    xhr.send(file)
+  })
+
+  return publicUrl
+}
 
 type LocationSource = 'gps' | 'checkin' | 'manual'
 
@@ -126,22 +159,15 @@ export function PhotoUploadForm({ checkIns }: { checkIns: CheckIn[] }) {
         // read above, so this can't affect location extraction.
         const uploadFile = await compressImage(file)
 
-        // Uploaded directly to blob storage from the browser so large phone
-        // photos and motion photos (which bundle several MB of video) don't
-        // hit the ~4.5MB body limit of the /api/photos serverless function.
-        const blob = await upload(uploadFile.name, uploadFile, {
-          access: 'public',
-          handleUploadUrl: '/api/photos/upload',
-          onUploadProgress: ({ percentage }) => {
-            setProgress(Math.round(((i + percentage / 100) / total) * 100))
-          },
+        const url = await uploadToStorage(uploadFile, (percentage) => {
+          setProgress(Math.round(((i + percentage / 100) / total) * 100))
         })
 
         const res = await fetch('/api/photos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            blob_url: blob.url,
+            blob_url: url,
             lat: coords.lat,
             lng: coords.lng,
             caption: caption.trim() || null,
