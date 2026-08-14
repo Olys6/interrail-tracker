@@ -9,7 +9,9 @@ const nextConfig = {
       },
       {
         protocol: 'https',
-        hostname: '*.tigrisfiles.io',
+        // Exact hostname, not a wildcard — Tigris is multi-tenant, so
+        // *.tigrisfiles.io would let next/image proxy any customer's bucket.
+        hostname: 'interrail-tracker-photos.t3.tigrisfiles.io',
       },
     ],
   },
