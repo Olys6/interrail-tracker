@@ -109,25 +109,34 @@ export function Sidebar({ open, onClose, checkIns, photos, onFlyTo, onSelectClus
                     <button
                       key={i}
                       onClick={() => { onFlyTo(cluster.lat, cluster.lng); onSelectCluster(cluster); onClose() }}
-                      className="group relative aspect-square overflow-hidden rounded-xl bg-gray-100"
+                      className="group block w-full text-left"
                     >
-                      <Image
-                        src={cluster.photos[0].blob_url}
-                        alt={cluster.photos[0].caption || 'Trip photo'}
-                        fill
-                        sizes="(max-width: 640px) 45vw, 140px"
-                        className="object-cover transition-transform duration-200 group-hover:scale-105"
-                      />
-                      {cluster.photos.length > 1 && (
-                        <div className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-xs font-semibold text-white">
-                          +{cluster.photos.length - 1}
-                        </div>
-                      )}
-                      {cluster.photos[0].caption && (
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 p-2">
-                          <p className="truncate text-xs text-white">{cluster.photos[0].caption}</p>
-                        </div>
-                      )}
+                      {/* The square frame is a <span>, not the <button> itself:
+                          WebKit doesn't make a button a containing block for
+                          absolutely positioned children, so on iOS Safari a
+                          `fill` image inside one escaped its tile and the
+                          photos piled up on top of each other. pt-[100%] on a
+                          zero-height box instead of aspect-square keeps the
+                          tiles square on older iOS too. */}
+                      <span className="relative block h-0 w-full overflow-hidden rounded-xl bg-gray-100 pt-[100%]">
+                        <Image
+                          src={cluster.photos[0].blob_url}
+                          alt={cluster.photos[0].caption || 'Trip photo'}
+                          fill
+                          sizes="(max-width: 640px) 45vw, 140px"
+                          className="object-cover transition-transform duration-200 group-hover:scale-105"
+                        />
+                        {cluster.photos.length > 1 && (
+                          <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-xs font-semibold text-white">
+                            +{cluster.photos.length - 1}
+                          </span>
+                        )}
+                        {cluster.photos[0].caption && (
+                          <span className="absolute inset-x-0 bottom-0 block bg-gradient-to-t from-black/60 p-2">
+                            <span className="block truncate text-xs text-white">{cluster.photos[0].caption}</span>
+                          </span>
+                        )}
+                      </span>
                     </button>
                   ))}
                 </div>

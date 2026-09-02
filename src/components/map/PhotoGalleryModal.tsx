@@ -46,20 +46,25 @@ export function PhotoGalleryModal({ cluster, onClose }: Props) {
               <button
                 key={photo.id}
                 onClick={() => setFullscreenIndex(i)}
-                className="group relative aspect-square overflow-hidden rounded-lg bg-gray-100"
+                className="group block w-full text-left"
               >
-                <Image
-                  src={photo.blob_url}
-                  alt={photo.caption || 'Trip photo'}
-                  fill
-                  sizes="(max-width: 640px) 50vw, 33vw"
-                  className="object-cover transition-transform group-hover:scale-105"
-                />
-                {photo.caption && (
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 p-1.5">
-                    <p className="truncate text-xs text-white">{photo.caption}</p>
-                  </div>
-                )}
+                {/* Frame on a <span> rather than the <button> — see Sidebar:
+                    iOS Safari ignores position/overflow on a button, which let
+                    these `fill` images overlap each other. */}
+                <span className="relative block h-0 w-full overflow-hidden rounded-lg bg-gray-100 pt-[100%]">
+                  <Image
+                    src={photo.blob_url}
+                    alt={photo.caption || 'Trip photo'}
+                    fill
+                    sizes="(max-width: 640px) 50vw, 33vw"
+                    className="object-cover transition-transform group-hover:scale-105"
+                  />
+                  {photo.caption && (
+                    <span className="absolute inset-x-0 bottom-0 block bg-gradient-to-t from-black/60 p-1.5">
+                      <span className="block truncate text-xs text-white">{photo.caption}</span>
+                    </span>
+                  )}
+                </span>
               </button>
             ))}
           </div>
