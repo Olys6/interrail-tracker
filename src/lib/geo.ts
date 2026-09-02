@@ -1,4 +1,4 @@
-import type { Photo } from './db'
+import type { CheckIn, Photo } from './db'
 
 export type CoordResult =
   | { ok: true; lat: number; lng: number }
@@ -65,4 +65,32 @@ export function clusterPhotos(photos: Photo[], radiusKm = CLUSTER_RADIUS_KM): Ph
     }
   }
   return clusters
+}
+
+// Photos only carry coordinates — place names live on check-ins. Label a
+// photo (or a cluster of them) with the nearest stop, so the sidebar can say
+// "Ljubljana" instead of a pair of decimals. Beyond the radius the nearest
+// stop is somewhere else entirely, so fall back to the raw coordinates.
+const NEAREST_PLACE_RADIUS_KM = 25
+
+export function describePlace(
+  lat: number,
+  lng: number,
+  checkIns: CheckIn[],
+  radiusKm = NEAREST_PLACE_RADIUS_KM
+): string {
+  let nearestName: string | null = null
+  let nearestKm = Infinity
+
+  for (const checkIn of checkIns) {
+    if (!checkIn.place_name) continue
+    const km = haversineKm(lat, lng, checkIn.lat, checkIn.lng)
+    if (km < nearestKm) {
+      nearestKm = km
+      nearestName = checkIn.place_name
+    }
+  }
+
+  if (nearestName && nearestKm <= radiusKm) return nearestName
+  return `${lat.toFixed(3)}, ${lng.toFixed(3)}`
 }

@@ -55,7 +55,11 @@ export function TripMap({ checkIns, photos, flyToTarget, selectedCluster, onSele
       <CurrentLocationMarker checkIn={checkIns.at(-1)} />
       <PhotoClusterMarkers clusters={clusters} onSelect={onSelectCluster} />
       {selectedCluster && (
-        <PhotoGalleryModal cluster={selectedCluster} onClose={() => onSelectCluster(null)} />
+        <PhotoGalleryModal
+          cluster={selectedCluster}
+          checkIns={checkIns}
+          onClose={() => onSelectCluster(null)}
+        />
       )}
     </Map>
   )

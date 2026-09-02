@@ -2,8 +2,8 @@
 
 import { useMemo } from 'react'
 import Image from 'next/image'
-import { X, MapPin, Camera } from 'lucide-react'
-import { clusterPhotos, type PhotoCluster } from '@/lib/geo'
+import { X, MapPin, Camera, Images, ChevronRight } from 'lucide-react'
+import { clusterPhotos, describePlace, type PhotoCluster } from '@/lib/geo'
 import type { CheckIn, Photo } from '@/lib/db'
 import { Guestbook } from './Guestbook'
 
@@ -27,6 +27,13 @@ function timeAgo(dateStr: string) {
 
 export function Sidebar({ open, onClose, checkIns, photos, onFlyTo, onSelectCluster }: Props) {
   const clusters = useMemo(() => clusterPhotos(photos), [photos])
+
+  // Each cluster gets the name of the nearest stop, so a tile can say where
+  // the photos were taken — photos themselves only carry coordinates.
+  const clusterPlaces = useMemo(
+    () => clusters.map((c) => describePlace(c.lat, c.lng, checkIns)),
+    [clusters, checkIns]
+  )
 
   return (
     <>
@@ -96,20 +103,31 @@ export function Sidebar({ open, onClose, checkIns, photos, onFlyTo, onSelectClus
 
             {/* Photos */}
             <div className="px-4 py-4">
-              <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
+              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
                 <Camera className="h-3.5 w-3.5" />
                 Photos ({photos.length})
               </div>
+              {clusters.length > 0 && (
+                <p className="mb-3 mt-1 text-xs text-gray-400">
+                  Tap a place to see all its photos.
+                </p>
+              )}
 
               {clusters.length === 0 ? (
                 <p className="text-sm text-gray-400">No photos yet.</p>
               ) : (
                 <div className="grid grid-cols-2 gap-2 pb-4 sm:grid-cols-2">
+                  {/* Two layout guards, both from putting text under the tile:
+                      min-w-0, because a 1fr track still grows to fit
+                      min-content and a long place name made one column wider
+                      than the other; and flex-col, because a <button> centres
+                      its content, so tiles without the "View all" line floated
+                      half a line lower than their neighbour. */}
                   {clusters.map((cluster, i) => (
                     <button
                       key={i}
                       onClick={() => { onFlyTo(cluster.lat, cluster.lng); onSelectCluster(cluster); onClose() }}
-                      className="group block w-full text-left"
+                      className="group flex w-full min-w-0 flex-col items-stretch text-left"
                     >
                       {/* The square frame is a <span>, not the <button> itself:
                           WebKit doesn't make a button a containing block for
@@ -127,8 +145,9 @@ export function Sidebar({ open, onClose, checkIns, photos, onFlyTo, onSelectClus
                           className="object-cover transition-transform duration-200 group-hover:scale-105"
                         />
                         {cluster.photos.length > 1 && (
-                          <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-xs font-semibold text-white">
-                            +{cluster.photos.length - 1}
+                          <span className="absolute right-1.5 top-1.5 flex items-center gap-1 rounded-full bg-black/60 px-1.5 py-0.5 text-xs font-semibold text-white">
+                            <Images className="h-3 w-3" />
+                            {cluster.photos.length}
                           </span>
                         )}
                         {cluster.photos[0].caption && (
@@ -137,6 +156,20 @@ export function Sidebar({ open, onClose, checkIns, photos, onFlyTo, onSelectClus
                           </span>
                         )}
                       </span>
+
+                      <span className="mt-1.5 flex min-w-0 items-center gap-1 text-xs font-medium text-gray-700">
+                        <MapPin className="h-3 w-3 flex-shrink-0 text-gray-400" />
+                        <span className="truncate">{clusterPlaces[i]}</span>
+                      </span>
+
+                      {/* Spelling out the action: a stack of photos behind one
+                          thumbnail wasn't reading as something you could open. */}
+                      {cluster.photos.length > 1 && (
+                        <span className="mt-0.5 flex min-w-0 items-center text-[11px] font-medium text-blue-600 group-hover:underline">
+                          <span className="truncate">View all {cluster.photos.length} photos</span>
+                          <ChevronRight className="h-3 w-3 flex-shrink-0" />
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>

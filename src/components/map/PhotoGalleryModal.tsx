@@ -2,16 +2,19 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { X, ChevronLeft, ChevronRight } from 'lucide-react'
-import type { PhotoCluster } from '@/lib/geo'
+import { X, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
+import { describePlace, type PhotoCluster } from '@/lib/geo'
+import type { CheckIn } from '@/lib/db'
 
 interface Props {
   cluster: PhotoCluster
+  checkIns: CheckIn[]
   onClose: () => void
 }
 
-export function PhotoGalleryModal({ cluster, onClose }: Props) {
+export function PhotoGalleryModal({ cluster, checkIns, onClose }: Props) {
   const [fullscreenIndex, setFullscreenIndex] = useState<number | null>(null)
+  const place = describePlace(cluster.lat, cluster.lng, checkIns)
 
   const goNext = () => {
     if (fullscreenIndex === null) return
@@ -30,12 +33,20 @@ export function PhotoGalleryModal({ cluster, onClose }: Props) {
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
         <div className="relative z-10 w-full max-w-lg rounded-t-2xl bg-white p-4 shadow-2xl sm:rounded-2xl">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-800">
-              {cluster.photos.length} photo{cluster.photos.length !== 1 ? 's' : ''} from this area
-            </h2>
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-1 text-sm font-semibold text-gray-800">
+                <MapPin className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
+                <span className="truncate">{place}</span>
+              </h2>
+              <p className="text-xs text-gray-400">
+                {cluster.photos.length} photo{cluster.photos.length !== 1 ? 's' : ''}
+                {cluster.photos.length > 1 ? ' — tap one to enlarge' : ''}
+              </p>
+            </div>
             <button
               onClick={onClose}
-              className="rounded-full p-1.5 text-gray-500 hover:bg-gray-100"
+              aria-label="Close gallery"
+              className="ml-2 flex-shrink-0 rounded-full p-1.5 text-gray-500 hover:bg-gray-100"
             >
               <X className="h-4 w-4" />
             </button>
